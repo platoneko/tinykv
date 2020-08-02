@@ -145,7 +145,7 @@ func (r *Raft) DPrintf(format string, a ...interface{}) (n int, err error) {
 			panic("Unknow state")
 		}
 		msg := fmt.Sprintf(format, a...)
-		log.Printf("Server %d (Term %d, State %s):\n%s", r.id, r.Term, state, msg)
+		log.Printf("Server %d (Term %d, State %s, Lead %d):\n%s", r.id, r.Term, state, r.Lead, msg)
 	}
 	return
 }
