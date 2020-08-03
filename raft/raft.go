@@ -580,7 +580,7 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 		// r.DPrintf("%v", r.RaftLog.entries)
 	}
 	if m.Commit > r.RaftLog.committed {
-		r.RaftLog.committed = min(m.Commit, m.Index + uint64(len(m.Entries)))
+		r.RaftLog.committed = min(m.Commit, m.Index+uint64(len(m.Entries)))
 	}
 	r.sendAppendResponse(m.From, false, None, r.RaftLog.LastIndex())
 }
@@ -651,6 +651,18 @@ func (r *Raft) appendEntries(entries []*pb.Entry) {
 	r.bcastAppend()
 	if len(r.Prs) == 1 {
 		r.RaftLog.committed = r.Prs[r.id].Match
+	}
+}
+
+func (r *Raft) softState() *SoftState {
+	return &SoftState{Lead: r.Lead, RaftState: r.State}
+}
+
+func (r *Raft) hardState() pb.HardState {
+	return pb.HardState{
+		Term:   r.Term,
+		Vote:   r.Vote,
+		Commit: r.RaftLog.committed,
 	}
 }
 
