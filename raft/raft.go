@@ -177,7 +177,6 @@ func newRaft(c *Config) *Raft {
 	}
 	lastIndex := r.RaftLog.LastIndex()
 	for _, peer := range c.peers {
-		r.votes[peer] = false
 		if peer == r.id {
 			r.Prs[peer] = &Progress{Next: lastIndex + 1, Match: lastIndex}
 		} else {
@@ -330,13 +329,8 @@ func (r *Raft) becomeCandidate() {
 	r.Lead = None
 	r.Term++
 	r.Vote = r.id
-	for peer := range r.votes {
-		if peer == r.id {
-			r.votes[peer] = true
-		} else {
-			r.votes[peer] = false
-		}
-	}
+	r.votes = make(map[uint64]bool)
+	r.votes[r.id] = true
 }
 
 // becomeLeader transform this peer's state to leader
@@ -464,11 +458,11 @@ func (r *Raft) doElection() {
 	r.becomeCandidate()
 	r.heartbeatElapsed = 0
 	r.randomElectionTimeout = r.electionTimeout + rand.Intn(r.electionTimeout)
-	if len(r.votes) == 1 {
+	if len(r.Prs) == 1 {
 		r.becomeLeader()
 		return
 	}
-	for peer := range r.votes {
+	for peer := range r.Prs {
 		if peer == r.id {
 			continue
 		}
@@ -522,13 +516,17 @@ func (r *Raft) handleRequestVoteResponse(m pb.Message) {
 	}
 	r.votes[m.From] = !m.Reject
 	grant := 0
+	votes := len(r.votes)
+	threshold := len(r.Prs) / 2
 	for _, g := range r.votes {
 		if g {
 			grant++
 		}
 	}
-	if grant > len(r.votes)/2 {
+	if grant > threshold {
 		r.becomeLeader()
+	} else if votes-grant > threshold {
+		r.becomeFollower(r.Term, None)
 	}
 }
 
@@ -539,6 +537,7 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 		r.sendAppendResponse(m.From, true, None, None)
 		return
 	}
+	r.Lead = m.From
 	lastIndex := r.RaftLog.LastIndex()
 	// r.DPrintf("lastIndex: %d, prevIndex: %d", lastIndex, m.Index)
 	// r.DPrintf("%#v", r.RaftLog.entries)
@@ -558,14 +557,17 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 		return
 	}
 	for i, entry := range m.Entries {
-		cur := r.RaftLog.toSliceIndex(m.Index + 1 + uint64(i))
-		if cur < len(r.RaftLog.entries) {
-			if r.RaftLog.entries[cur].Term != entry.Term {
-				r.RaftLog.entries[cur] = *entry
-				r.RaftLog.entries = r.RaftLog.entries[:cur+1]
-				curIndex := r.RaftLog.toEntryIndex(cur)
-				if r.RaftLog.stabled >= curIndex {
-					r.RaftLog.stabled = curIndex - 1
+		if entry.Index <= r.RaftLog.LastIndex() {
+			logTerm, err := r.RaftLog.Term(entry.Index)
+			if err != nil {
+				panic(err)
+			}
+			if logTerm != entry.Term {
+				idx := r.RaftLog.toSliceIndex(entry.Index)
+				r.RaftLog.entries[idx] = *entry
+				r.RaftLog.entries = r.RaftLog.entries[:idx+1]
+				if r.RaftLog.stabled >= entry.Index {
+					r.RaftLog.stabled = entry.Index - 1
 				}
 			}
 		} else {
@@ -575,9 +577,10 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 			}
 			break
 		}
+		// r.DPrintf("%v", r.RaftLog.entries)
 	}
 	if m.Commit > r.RaftLog.committed {
-		r.RaftLog.committed = min(m.Commit, r.RaftLog.LastIndex())
+		r.RaftLog.committed = min(m.Commit, m.Index + uint64(len(m.Entries)))
 	}
 	r.sendAppendResponse(m.From, false, None, r.RaftLog.LastIndex())
 }
@@ -618,6 +621,7 @@ func (r *Raft) leaderCommit() {
 	}
 	if n > r.RaftLog.committed && logTerm == r.Term {
 		r.RaftLog.committed = n
+		r.bcastAppend()
 	}
 }
 
@@ -628,6 +632,7 @@ func (r *Raft) handleHeartbeat(m pb.Message) {
 		r.sendHeartbeatResponse(m.From, true)
 		return
 	}
+	r.Lead = m.From
 	r.heartbeatElapsed = 0
 	r.randomElectionTimeout = r.electionTimeout + rand.Intn(r.electionTimeout)
 	r.RaftLog.committed = m.Commit
