@@ -360,12 +360,7 @@ func (r *Raft) becomeLeader() {
 func (r *Raft) Step(m pb.Message) error {
 	// Your Code Here (2A).
 	if m.Term > r.Term {
-		if m.MsgType == pb.MessageType_MsgAppend || m.MsgType == pb.MessageType_MsgHeartbeat ||
-			m.MsgType == pb.MessageType_MsgSnapshot {
-			r.becomeFollower(m.Term, m.From)
-		} else {
-			r.becomeFollower(m.Term, None)
-		}
+		r.becomeFollower(m.Term, None)
 	}
 	switch r.State {
 	case StateFollower:
@@ -384,6 +379,8 @@ func (r *Raft) stepFollower(m pb.Message) error {
 		r.doElection()
 	case pb.MessageType_MsgBeat:
 	case pb.MessageType_MsgPropose:
+		m.To = r.Lead
+		r.msgs = append(r.msgs, m)
 	case pb.MessageType_MsgAppend:
 		r.handleAppendEntries(m)
 	case pb.MessageType_MsgAppendResponse:
