@@ -379,8 +379,6 @@ func (r *Raft) stepFollower(m pb.Message) error {
 		r.doElection()
 	case pb.MessageType_MsgBeat:
 	case pb.MessageType_MsgPropose:
-		m.To = r.Lead
-		r.msgs = append(r.msgs, m)
 	case pb.MessageType_MsgAppend:
 		r.handleAppendEntries(m)
 	case pb.MessageType_MsgAppendResponse:
@@ -535,51 +533,52 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 		return
 	}
 	r.Lead = m.From
-	lastIndex := r.RaftLog.LastIndex()
+	l := r.RaftLog
+	lastIndex := l.LastIndex()
 	// r.DPrintf("lastIndex: %d, prevIndex: %d", lastIndex, m.Index)
 	// r.DPrintf("%#v", r.RaftLog.entries)
 	if m.Index > lastIndex {
 		r.sendAppendResponse(m.From, true, None, lastIndex+1)
 		return
 	}
-	logTerm, err := r.RaftLog.Term(m.Index)
+	logTerm, err := l.Term(m.Index)
 	if err != nil {
 		panic(err)
 	}
 	// r.DPrintf("lastLogTerm: %d, prevTerm: %d", logTerm, m.LogTerm)
 	if logTerm != m.LogTerm {
-		index := r.RaftLog.toEntryIndex(sort.Search(r.RaftLog.toSliceIndex(m.Index+1),
-			func(i int) bool { return r.RaftLog.entries[i].Term == logTerm }))
+		index := l.toEntryIndex(sort.Search(l.toSliceIndex(m.Index+1),
+			func(i int) bool { return l.entries[i].Term == logTerm }))
 		r.sendAppendResponse(m.From, true, logTerm, index)
 		return
 	}
 	for i, entry := range m.Entries {
-		if entry.Index <= r.RaftLog.LastIndex() {
-			logTerm, err := r.RaftLog.Term(entry.Index)
+		if entry.Index <= l.LastIndex() {
+			logTerm, err := l.Term(entry.Index)
 			if err != nil {
 				panic(err)
 			}
 			if logTerm != entry.Term {
-				idx := r.RaftLog.toSliceIndex(entry.Index)
-				r.RaftLog.entries[idx] = *entry
-				r.RaftLog.entries = r.RaftLog.entries[:idx+1]
-				if r.RaftLog.stabled >= entry.Index {
-					r.RaftLog.stabled = entry.Index - 1
+				idx := l.toSliceIndex(entry.Index)
+				l.entries[idx] = *entry
+				l.entries = l.entries[:idx+1]
+				if l.stabled >= entry.Index {
+					l.stabled = entry.Index - 1
 				}
 			}
 		} else {
 			n := len(m.Entries)
 			for j := i; j < n; j++ {
-				r.RaftLog.entries = append(r.RaftLog.entries, *m.Entries[j])
+				l.entries = append(l.entries, *m.Entries[j])
 			}
 			break
 		}
 		// r.DPrintf("%v", r.RaftLog.entries)
 	}
-	if m.Commit > r.RaftLog.committed {
-		r.RaftLog.committed = min(m.Commit, m.Index+uint64(len(m.Entries)))
+	if m.Commit > l.committed {
+		l.committed = min(m.Commit, m.Index+uint64(len(m.Entries)))
 	}
-	r.sendAppendResponse(m.From, false, None, r.RaftLog.LastIndex())
+	r.sendAppendResponse(m.From, false, None, l.LastIndex())
 }
 
 func (r *Raft) handleAppendEntriesResponse(m pb.Message) {
@@ -589,10 +588,11 @@ func (r *Raft) handleAppendEntriesResponse(m pb.Message) {
 	if m.Reject {
 		index := m.Index
 		logTerm := m.LogTerm
-		sliceIndex := sort.Search(len(r.RaftLog.entries),
-			func(i int) bool { return r.RaftLog.entries[i].Term > logTerm })
-		if sliceIndex > 0 && r.RaftLog.entries[sliceIndex-1].Term == logTerm {
-			index = r.RaftLog.toEntryIndex(sliceIndex)
+		l := r.RaftLog
+		sliceIndex := sort.Search(len(l.entries),
+			func(i int) bool { return l.entries[i].Term > logTerm })
+		if sliceIndex > 0 && l.entries[sliceIndex-1].Term == logTerm {
+			index = l.toEntryIndex(sliceIndex)
 		}
 		r.Prs[m.From].Next = index
 		r.sendAppend(m.From)
