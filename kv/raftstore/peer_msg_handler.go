@@ -48,6 +48,7 @@ func (d *peerMsgHandler) HandleRaftReady() {
 		return
 	}
 	// Your Code Here (2B).
+	log.Debugf("++++++++++*peerMsgHandler.HandleRaftReady")
 	if d.RaftGroup.HasReady() {
 		rd := d.RaftGroup.Ready()
 		d.peerStorage.SaveReadyState(&rd)
@@ -76,7 +77,7 @@ func (d *peerMsgHandler) HandleRaftReady() {
 						if p.term != entry.Term {
 							p.cb.Done(ErrRespStaleCommand(p.term))
 						} else {
-							resp := &raft_cmdpb.RaftCmdResponse{}
+							resp := &raft_cmdpb.RaftCmdResponse{Header: &raft_cmdpb.RaftResponseHeader{}}
 							switch m.CmdType {
 							case raft_cmdpb.CmdType_Get:
 								applyState.AppliedIndex = entry.Index
@@ -94,6 +95,12 @@ func (d *peerMsgHandler) HandleRaftReady() {
 							case raft_cmdpb.CmdType_Delete:
 								resp.Responses = []*raft_cmdpb.Response{{CmdType: raft_cmdpb.CmdType_Delete, Delete: &raft_cmdpb.DeleteResponse{}}}
 							case raft_cmdpb.CmdType_Snap:
+								applyState.AppliedIndex = entry.Index
+								kvWB.SetMeta(meta.ApplyStateKey(d.regionId), applyState)
+								kvWB.WriteToDB(d.peerStorage.Engines.Kv)
+								resp.Responses = []*raft_cmdpb.Response{{CmdType: raft_cmdpb.CmdType_Snap, Snap: &raft_cmdpb.SnapResponse{Region: d.Region()}}}
+								p.cb.Txn = d.peerStorage.Engines.Kv.NewTransaction(false)
+								kvWB = new(engine_util.WriteBatch)
 							}
 							p.cb.Done(resp)
 						}
@@ -179,6 +186,7 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 		return
 	}
 	// Your Code Here (2B).
+	log.Debugf("++++++++++*peerMsgHandler.proposeRaftCommand")
 	data, err := msg.Requests[0].Marshal()
 	if err != nil {
 		panic(err)

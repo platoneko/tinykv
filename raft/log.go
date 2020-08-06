@@ -64,7 +64,7 @@ func newLog(storage Storage) *RaftLog {
 	if err != nil {
 		panic(err)
 	}
-	return &RaftLog{storage: storage, entries: entries, stabled: hi}
+	return &RaftLog{storage: storage, entries: entries, stabled: hi, applied: lo - 1}
 }
 
 // We need to compact the log entries in some point of time like

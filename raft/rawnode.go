@@ -155,6 +155,7 @@ func (rn *RawNode) Step(m pb.Message) error {
 // Ready returns the current point-in-time state of this RawNode.
 func (rn *RawNode) Ready() Ready {
 	// Your Code Here (2A).
+	// rn.Raft.DPrintf("Ready")
 	rd := Ready{
 		Entries:          rn.Raft.RaftLog.unstableEntries(),
 		CommittedEntries: rn.Raft.RaftLog.nextEnts(),
@@ -164,7 +165,7 @@ func (rn *RawNode) Ready() Ready {
 	hardSt := rn.Raft.hardState()
 	if !softSt.equal(rn.prevSoftSt) {
 		rn.prevSoftSt = softSt
-		rd.SoftState = softSt
+		rd.SoftState  = softSt
 	}
 	if !isHardStateEqual(hardSt, rn.prevHardSt) {
 		rd.HardState = hardSt
@@ -177,6 +178,7 @@ func (rn *RawNode) Ready() Ready {
 func (rn *RawNode) HasReady() bool {
 	// Your Code Here (2A).
 	r := rn.Raft
+	// r.DPrintf("HasReady")
 	if hardSt := r.hardState(); !IsEmptyHardState(hardSt) && !isHardStateEqual(hardSt, rn.prevHardSt) {
 		return true
 	}
