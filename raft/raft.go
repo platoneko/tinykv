@@ -506,6 +506,8 @@ func (r *Raft) handleRequestVote(m pb.Message) {
 		return
 	}
 	r.Vote = m.From
+	r.electionElapsed = 0
+	r.randomElectionTimeout = r.electionTimeout + rand.Intn(r.electionTimeout)
 	r.sendRequestVoteResponse(m.From, false)
 }
 
@@ -537,6 +539,8 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 		r.sendAppendResponse(m.From, true, None, None)
 		return
 	}
+	r.electionElapsed = 0
+	r.randomElectionTimeout = r.electionTimeout + rand.Intn(r.electionTimeout)
 	r.Lead = m.From
 	l := r.RaftLog
 	lastIndex := l.LastIndex()
@@ -639,7 +643,7 @@ func (r *Raft) handleHeartbeat(m pb.Message) {
 		return
 	}
 	r.Lead = m.From
-	r.heartbeatElapsed = 0
+	r.electionElapsed = 0
 	r.randomElectionTimeout = r.electionTimeout + rand.Intn(r.electionTimeout)
 	r.sendHeartbeatResponse(m.From, false)
 }
