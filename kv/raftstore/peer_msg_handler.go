@@ -63,7 +63,7 @@ func (d *peerMsgHandler) process(entry *eraftpb.Entry, wb *engine_util.WriteBatc
 		p := d.proposals[0]
 		if p.index == entry.Index {
 			if p.term != entry.Term {
-				p.cb.Done(ErrRespStaleCommand(p.term))
+				p.cb.Done(ErrRespStaleCommand(entry.Term))
 			} else {
 				resp := &raft_cmdpb.RaftCmdResponse{Header: &raft_cmdpb.RaftResponseHeader{}}
 				switch m.CmdType {
@@ -116,7 +116,9 @@ func (d *peerMsgHandler) HandleRaftReady() {
 			kvWB.SetMeta(meta.ApplyStateKey(d.regionId), d.peerStorage.applyState)
 			kvWB.WriteToDB(d.peerStorage.Engines.Kv)
 		}
+		d.RaftGroup.Raft.DPrintf("before Advance")
 		d.RaftGroup.Advance(rd)
+		d.RaftGroup.Raft.DPrintf("after Advance")
 	}
 }
 
@@ -189,7 +191,22 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 		return
 	}
 	// Your Code Here (2B).
-	log.Debugf("++++++++++*peerMsgHandler.proposeRaftCommand")
+	if msg.AdminRequest != nil {
+		adminReq := msg.AdminRequest
+		switch adminReq.CmdType {
+		case raft_cmdpb.AdminCmdType_CompactLog:
+			d.RaftGroup.Raft.DPrintf("AdminCmdType_CompactLog, compact: %d", adminReq.CompactLog.CompactIndex)
+			applySt := d.peerStorage.applyState
+			applySt.TruncatedState.Index = adminReq.CompactLog.CompactIndex
+			applySt.TruncatedState.Term = adminReq.CompactLog.CompactTerm
+			kvWB := new(engine_util.WriteBatch)
+			kvWB.SetMeta(meta.ApplyStateKey(d.regionId), applySt)
+			kvWB.WriteToDB(d.peerStorage.Engines.Kv)
+			d.ScheduleCompactLog(d.RaftGroup.Raft.RaftLog.FirstIndex, applySt.TruncatedState.Index)
+			d.RaftGroup.Raft.RaftLog.FirstIndex = applySt.TruncatedState.Index + 1
+		}
+		return
+	}
 	data, err := msg.Requests[0].Marshal()
 	if err != nil {
 		panic(err)
@@ -204,7 +221,7 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 		if idx < n {
 			for i := idx; i < n; i++ {
 				pi := d.proposals[i]
-				pi.cb.Done(ErrRespStaleCommand(pi.term))
+				pi.cb.Done(ErrRespStaleCommand(r.Term))
 			}
 			d.proposals = d.proposals[:idx]
 		}

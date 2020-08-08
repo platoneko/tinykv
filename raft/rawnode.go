@@ -156,21 +156,26 @@ func (rn *RawNode) Step(m pb.Message) error {
 func (rn *RawNode) Ready() Ready {
 	// Your Code Here (2A).
 	// rn.Raft.DPrintf("Ready")
+	r := rn.Raft
 	rd := Ready{
-		Entries:          rn.Raft.RaftLog.unstableEntries(),
-		CommittedEntries: rn.Raft.RaftLog.nextEnts(),
-		Messages:         rn.Raft.msgs,
+		Entries:          r.RaftLog.unstableEntries(),
+		CommittedEntries: r.RaftLog.nextEnts(),
+		Messages:         r.msgs,
 	}
-	softSt := rn.Raft.softState()
-	hardSt := rn.Raft.hardState()
+	softSt := r.softState()
+	hardSt := r.hardState()
 	if !softSt.equal(rn.prevSoftSt) {
 		rn.prevSoftSt = softSt
-		rd.SoftState  = softSt
+		rd.SoftState = softSt
 	}
 	if !isHardStateEqual(hardSt, rn.prevHardSt) {
 		rd.HardState = hardSt
 	}
 	rn.Raft.msgs = make([]pb.Message, 0)
+	if !IsEmptySnap(r.RaftLog.pendingSnapshot) {
+		rd.Snapshot = *r.RaftLog.pendingSnapshot
+		r.RaftLog.pendingSnapshot = nil
+	}
 	return rd
 }
 
@@ -178,13 +183,16 @@ func (rn *RawNode) Ready() Ready {
 func (rn *RawNode) HasReady() bool {
 	// Your Code Here (2A).
 	r := rn.Raft
-	// r.DPrintf("HasReady")
+	r.DPrintf("HasReady")
 	if hardSt := r.hardState(); !IsEmptyHardState(hardSt) && !isHardStateEqual(hardSt, rn.prevHardSt) {
 		return true
 	}
 	if len(r.RaftLog.unstableEntries()) > 0 ||
 		len(r.RaftLog.nextEnts()) > 0 ||
 		len(r.msgs) > 0 {
+		return true
+	}
+	if !IsEmptySnap(r.RaftLog.pendingSnapshot) {
 		return true
 	}
 	return false

@@ -176,7 +176,6 @@ func newRaft(c *Config) *Raft {
 		electionTimeout:  c.ElectionTick,
 		RaftLog:          newLog(c.Storage),
 	}
-
 	hardSt, confSt, _ := r.RaftLog.storage.InitialState()
 	if c.peers == nil {
 		r.peers = confSt.Nodes
@@ -184,24 +183,24 @@ func newRaft(c *Config) *Raft {
 		r.peers = c.peers
 	}
 	lastIndex := r.RaftLog.LastIndex()
-	firstIndex, _ := r.RaftLog.storage.FirstIndex()
 	for _, peer := range r.peers {
 		if peer == r.id {
 			r.Prs[peer] = &Progress{Next: lastIndex + 1, Match: lastIndex}
 		} else {
-			r.Prs[peer] = &Progress{Next: lastIndex + 1, Match: firstIndex - 1}
+			r.Prs[peer] = &Progress{}
 		}
 	}
 	r.becomeFollower(0, None)
 	r.randomElectionTimeout = r.electionTimeout + rand.Intn(r.electionTimeout)
 	r.Term, r.Vote, r.RaftLog.committed = hardSt.GetTerm(), hardSt.GetVote(), hardSt.GetCommit()
+	r.RaftLog.applied = c.Applied
 	return r
 }
 
 func (r *Raft) sendSnapshot(to uint64) {
 	snapshot, err := r.RaftLog.storage.Snapshot()
 	if err != nil {
-		panic(err)
+		return
 	}
 	msg := pb.Message{
 		MsgType:  pb.MessageType_MsgSnapshot,
@@ -370,12 +369,7 @@ func (r *Raft) becomeLeader() {
 			r.Prs[peer].Next = lastIndex + 2
 			r.Prs[peer].Match = lastIndex + 1
 		} else {
-			if prs, ok := r.Prs[peer]; ok {
-				prs.Next = lastIndex + 1
-			} else {
-				firstIndex, _ := r.RaftLog.storage.FirstIndex()
-				r.Prs[peer] = &Progress{Next: lastIndex + 1, Match: firstIndex - 1}
-			}
+			r.Prs[peer].Next = lastIndex + 1
 		}
 	}
 	r.RaftLog.entries = append(r.RaftLog.entries, pb.Entry{Term: r.Term, Index: r.RaftLog.LastIndex() + 1})
@@ -441,9 +435,6 @@ func (r *Raft) stepCandidate(m pb.Message) error {
 	case pb.MessageType_MsgRequestVoteResponse:
 		r.handleRequestVoteResponse(m)
 	case pb.MessageType_MsgSnapshot:
-		if m.Term == r.Term {
-			r.becomeFollower(m.Term, m.From)
-		}
 		r.handleSnapshot(m)
 	case pb.MessageType_MsgHeartbeat:
 		if m.Term == r.Term {
@@ -496,6 +487,7 @@ func (r *Raft) doElection() {
 }
 
 func (r *Raft) bcastHeartbeat() {
+	r.DPrintf("bcastHeartbeat, entry: %d", len(r.RaftLog.entries))
 	for _, peer := range r.peers {
 		if peer == r.id {
 			continue
@@ -596,9 +588,7 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 				idx := l.toSliceIndex(entry.Index)
 				l.entries[idx] = *entry
 				l.entries = l.entries[:idx+1]
-				if l.stabled >= entry.Index {
-					l.stabled = entry.Index - 1
-				}
+				l.stabled = min(l.stabled, entry.Index-1)
 			}
 		} else {
 			n := len(m.Entries)
@@ -662,6 +652,7 @@ func (r *Raft) leaderCommit() {
 
 // handleHeartbeat handle Heartbeat RPC request
 func (r *Raft) handleHeartbeat(m pb.Message) {
+	r.DPrintf("handleHeartbeat, entry: %d", len(r.RaftLog.entries))
 	// Your Code Here (2A).
 	if m.Term < r.Term {
 		r.sendHeartbeatResponse(m.From, true)
@@ -703,13 +694,27 @@ func (r *Raft) hardState() pb.HardState {
 // handleSnapshot handle Snapshot RPC request
 func (r *Raft) handleSnapshot(m pb.Message) {
 	// Your Code Here (2C).
-	if m.Term < r.Term {
+	if m.Snapshot.Metadata.Index < r.RaftLog.FirstIndex {
 		return
 	}
+	r.DPrintf("handleSnapshot, entry: %d", len(r.RaftLog.entries))
 	meta := m.Snapshot.Metadata
-	r.Term = meta.Term
-	r.RaftLog.committed = meta.Index
+	r.Term = max(meta.Term, r.Term)
+	r.RaftLog.FirstIndex = meta.Index + 1
+	r.RaftLog.applied = max(meta.Index, r.RaftLog.applied)
+	r.RaftLog.committed = max(meta.Index, r.RaftLog.committed)
+	r.RaftLog.stabled = max(meta.Index, r.RaftLog.stabled)
 	r.peers = meta.ConfState.Nodes
+	r.Prs = make(map[uint64]*Progress)
+	lastIndex := r.RaftLog.LastIndex()
+	for _, peer := range r.peers {
+		if peer == r.id {
+			r.Prs[peer] = &Progress{Next: lastIndex + 1, Match: lastIndex}
+		} else {
+			r.Prs[peer] = &Progress{}
+		}
+	}
+	r.RaftLog.pendingSnapshot = m.Snapshot
 }
 
 // addNode add a new node to raft group
