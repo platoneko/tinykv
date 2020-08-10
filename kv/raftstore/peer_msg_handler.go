@@ -99,6 +99,7 @@ func (d *peerMsgHandler) processRequest(entry *eraftpb.Entry, req *raft_cmdpb.Re
 func (d *peerMsgHandler) processAdminRequest(req *raft_cmdpb.AdminRequest, wb *engine_util.WriteBatch) *engine_util.WriteBatch {
 	switch req.CmdType {
 	case raft_cmdpb.AdminCmdType_CompactLog:
+		d.RaftGroup.Raft.DPrintf("AdminCmdType_CompactLog")
 		compactLog := req.GetCompactLog()
 		applySt := d.peerStorage.applyState
 		applySt.TruncatedState.Index = compactLog.CompactIndex
@@ -140,6 +141,9 @@ func (d *peerMsgHandler) HandleRaftReady() {
 			d.peerStorage.applyState.AppliedIndex = rd.CommittedEntries[len(rd.CommittedEntries)-1].Index
 			kvWB.SetMeta(meta.ApplyStateKey(d.regionId), d.peerStorage.applyState)
 			kvWB.WriteToDB(d.peerStorage.Engines.Kv)
+			proposals := make([]*proposal, len(d.proposals))
+			copy(proposals, d.proposals)
+			d.proposals = proposals
 		}
 		d.RaftGroup.Advance(rd)
 	}
@@ -220,6 +224,7 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 			panic(err)
 		}
 		d.RaftGroup.Propose(data)
+		d.RaftGroup.Raft.DPrintf("AdminRequest")
 		return
 	}
 	data, err := msg.Requests[0].Marshal()

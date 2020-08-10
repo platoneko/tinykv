@@ -193,7 +193,9 @@ func newRaft(c *Config) *Raft {
 	r.becomeFollower(0, None)
 	r.randomElectionTimeout = r.electionTimeout + rand.Intn(r.electionTimeout)
 	r.Term, r.Vote, r.RaftLog.committed = hardSt.GetTerm(), hardSt.GetVote(), hardSt.GetCommit()
-	r.RaftLog.applied = c.Applied
+	if c.Applied > 0 {
+		r.RaftLog.applied = c.Applied
+	}
 	return r
 }
 
@@ -226,7 +228,7 @@ func (r *Raft) sendAppend(to uint64) bool {
 		}
 		panic(err)
 	}
-	entries := make([]*pb.Entry, 0)
+	var entries []*pb.Entry
 	n := len(r.RaftLog.entries)
 	for i := r.RaftLog.toSliceIndex(prevIndex + 1); i < n; i++ {
 		// r.DPrintf("sendAppend i: %d", i)
@@ -566,18 +568,23 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 		r.sendAppendResponse(m.From, true, None, lastIndex+1)
 		return
 	}
-	logTerm, err := l.Term(m.Index)
-	if err != nil {
-		panic(err)
+	if m.Index >= l.FirstIndex {
+		logTerm, err := l.Term(m.Index)
+		if err != nil {
+			panic(err)
+		}
+		if logTerm != m.LogTerm {
+			index := l.toEntryIndex(sort.Search(l.toSliceIndex(m.Index+1),
+				func(i int) bool { return l.entries[i].Term == logTerm }))
+			r.sendAppendResponse(m.From, true, logTerm, index)
+			return
+		}
 	}
-	// r.DPrintf("lastLogTerm: %d, prevTerm: %d", logTerm, m.LogTerm)
-	if logTerm != m.LogTerm {
-		index := l.toEntryIndex(sort.Search(l.toSliceIndex(m.Index+1),
-			func(i int) bool { return l.entries[i].Term == logTerm }))
-		r.sendAppendResponse(m.From, true, logTerm, index)
-		return
-	}
+
 	for i, entry := range m.Entries {
+		if entry.Index < l.FirstIndex {
+			continue
+		}
 		if entry.Index <= l.LastIndex() {
 			logTerm, err := l.Term(entry.Index)
 			if err != nil {
@@ -610,20 +617,24 @@ func (r *Raft) handleAppendEntriesResponse(m pb.Message) {
 	}
 	if m.Reject {
 		index := m.Index
-		logTerm := m.LogTerm
-		l := r.RaftLog
-		sliceIndex := sort.Search(len(l.entries),
-			func(i int) bool { return l.entries[i].Term > logTerm })
-		if sliceIndex > 0 && l.entries[sliceIndex-1].Term == logTerm {
-			index = l.toEntryIndex(sliceIndex)
+		if m.LogTerm != None {
+			logTerm := m.LogTerm
+			l := r.RaftLog
+			sliceIndex := sort.Search(len(l.entries),
+				func(i int) bool { return l.entries[i].Term > logTerm })
+			if sliceIndex > 0 && l.entries[sliceIndex-1].Term == logTerm {
+				index = l.toEntryIndex(sliceIndex)
+			}
 		}
 		r.Prs[m.From].Next = index
 		r.sendAppend(m.From)
 		return
 	}
-	r.Prs[m.From].Match = m.Index
-	r.Prs[m.From].Next = m.Index + 1
-	r.leaderCommit()
+	if m.Index > r.Prs[m.From].Match {
+		r.Prs[m.From].Match = m.Index
+		r.Prs[m.From].Next = m.Index + 1
+		r.leaderCommit()
+	}
 }
 
 func (r *Raft) leaderCommit() {
@@ -693,14 +704,15 @@ func (r *Raft) hardState() pb.HardState {
 func (r *Raft) handleSnapshot(m pb.Message) {
 	// Your Code Here (2C).
 	meta := m.Snapshot.Metadata
-	if meta.Index < r.RaftLog.FirstIndex || meta.Index < r.RaftLog.committed {
-		r.sendAppendResponse(m.From, false, None, meta.Index)
+	r.DPrintf("snapshot index: %d\n", meta.Index)
+	if meta.Index <= r.RaftLog.committed {
+		r.sendAppendResponse(m.From, false, None, r.RaftLog.committed)
 		return
 	}
 	r.becomeFollower(m.Term, m.From)
 	first := meta.Index + 1
 	if len(r.RaftLog.entries) > 0 {
-		r.RaftLog.entries = r.RaftLog.entries[:0]
+		r.RaftLog.entries = nil
 	}
 	r.RaftLog.FirstIndex = first
 	r.RaftLog.applied = meta.Index
@@ -712,7 +724,7 @@ func (r *Raft) handleSnapshot(m pb.Message) {
 		r.Prs[peer] = &Progress{}
 	}
 	r.RaftLog.pendingSnapshot = m.Snapshot
-	r.sendAppendResponse(m.From, false, None, meta.Index)
+	r.sendAppendResponse(m.From, false, None, r.RaftLog.LastIndex())
 }
 
 // addNode add a new node to raft group

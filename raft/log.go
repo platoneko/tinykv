@@ -65,7 +65,7 @@ func newLog(storage Storage) *RaftLog {
 	if err != nil {
 		panic(err)
 	}
-	return &RaftLog{storage: storage, entries: entries, stabled: hi, FirstIndex: lo}
+	return &RaftLog{storage: storage, entries: entries, applied: lo - 1, stabled: hi, FirstIndex: lo}
 }
 
 // We need to compact the log entries in some point of time like
@@ -76,7 +76,9 @@ func (l *RaftLog) maybeCompact() {
 	first, _ := l.storage.FirstIndex()
 	if first > l.FirstIndex {
 		if len(l.entries) > 0 {
-			l.entries = l.entries[l.toSliceIndex(first):]
+			entries := l.entries[l.toSliceIndex(first):]
+			l.entries = make([]pb.Entry, len(entries))
+			copy(l.entries, entries)
 		}
 		l.FirstIndex = first
 	}
@@ -86,9 +88,9 @@ func (l *RaftLog) maybeCompact() {
 func (l *RaftLog) unstableEntries() []pb.Entry {
 	// Your Code Here (2A).
 	if len(l.entries) > 0 {
-		return l.entries[l.stabled-l.entries[0].Index+1 : len(l.entries)]
+		return l.entries[l.stabled-l.FirstIndex+1:]
 	}
-	return make([]pb.Entry, 0)
+	return nil
 }
 
 // nextEnts returns all the committed but not applied entries
@@ -98,7 +100,7 @@ func (l *RaftLog) nextEnts() (ents []pb.Entry) {
 	if len(l.entries) > 0 {
 		return l.entries[l.applied-l.FirstIndex+1 : l.committed-l.FirstIndex+1]
 	}
-	return make([]pb.Entry, 0)
+	return nil
 }
 
 // LastIndex return the last index of the log entries

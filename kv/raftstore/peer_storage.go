@@ -357,13 +357,19 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 	ps.applyState.TruncatedState.Index = snapshot.Metadata.Index
 	ps.applyState.TruncatedState.Term = snapshot.Metadata.Term
 	ps.snapState.StateType = snap.SnapState_Applying
+
+	log.Infof("+++++++++++TruncatedState: %+v", *ps.applyState.TruncatedState)
+	
+	ch := make(chan bool, 1)
+	
 	ps.regionSched <- &runner.RegionTaskApply{
 		RegionId: snapData.Region.GetId(),
-		Notifier: make(chan bool, 1),
+		Notifier: ch,
 		SnapMeta: snapshot.Metadata,
 		StartKey: snapData.Region.GetStartKey(),
 		EndKey:   snapData.Region.GetEndKey(),
 	}
+	
 	ps.clearMeta(kvWB, raftWB)
 	ps.clearExtraData(snapData.Region)
 	kvWB.SetMeta(meta.ApplyStateKey(snapData.Region.GetId()), ps.applyState)
