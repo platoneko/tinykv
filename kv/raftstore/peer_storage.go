@@ -22,20 +22,6 @@ import (
 	"github.com/pingcap/errors"
 )
 
-func min(a, b uint64) uint64 {
-	if a > b {
-		return b
-	}
-	return a
-}
-
-func max(a, b uint64) uint64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 type ApplySnapResult struct {
 	// PrevRegion is the region before snapshot applied
 	PrevRegion *metapb.Region
@@ -365,9 +351,9 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 	// and send RegionTaskApply task to region worker through ps.regionSched, also remember call ps.clearMeta
 	// and ps.clearExtraData to delete stale data
 	// Your Code Here (2C).
-	ps.raftState.LastIndex = max(ps.raftState.LastIndex, snapshot.Metadata.Index)
-	ps.raftState.LastTerm = max(ps.raftState.LastTerm, snapshot.Metadata.Term)
-	ps.applyState.AppliedIndex = max(ps.applyState.AppliedIndex, snapshot.Metadata.Index)
+	ps.raftState.LastIndex = snapshot.Metadata.Index
+	ps.raftState.LastTerm = snapshot.Metadata.Term
+	ps.applyState.AppliedIndex = snapshot.Metadata.Index
 	ps.applyState.TruncatedState.Index = snapshot.Metadata.Index
 	ps.applyState.TruncatedState.Term = snapshot.Metadata.Term
 	ps.snapState.StateType = snap.SnapState_Applying

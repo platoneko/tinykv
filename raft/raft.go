@@ -692,26 +692,27 @@ func (r *Raft) hardState() pb.HardState {
 // handleSnapshot handle Snapshot RPC request
 func (r *Raft) handleSnapshot(m pb.Message) {
 	// Your Code Here (2C).
-	if m.Snapshot.Metadata.Index < r.RaftLog.FirstIndex {
+	meta := m.Snapshot.Metadata
+	if meta.Index < r.RaftLog.FirstIndex || meta.Index < r.RaftLog.committed {
+		r.sendAppendResponse(m.From, false, None, meta.Index)
 		return
 	}
-	meta := m.Snapshot.Metadata
-	r.Term = max(meta.Term, r.Term)
-	r.RaftLog.FirstIndex = meta.Index + 1
-	r.RaftLog.applied = max(meta.Index, r.RaftLog.applied)
-	r.RaftLog.committed = max(meta.Index, r.RaftLog.committed)
-	r.RaftLog.stabled = max(meta.Index, r.RaftLog.stabled)
+	r.becomeFollower(m.Term, m.From)
+	first := meta.Index + 1
+	if len(r.RaftLog.entries) > 0 {
+		r.RaftLog.entries = r.RaftLog.entries[:0]
+	}
+	r.RaftLog.FirstIndex = first
+	r.RaftLog.applied = meta.Index
+	r.RaftLog.committed = meta.Index
+	r.RaftLog.stabled = meta.Index
 	r.peers = meta.ConfState.Nodes
 	r.Prs = make(map[uint64]*Progress)
-	lastIndex := r.RaftLog.LastIndex()
 	for _, peer := range r.peers {
-		if peer == r.id {
-			r.Prs[peer] = &Progress{Next: lastIndex + 1, Match: lastIndex}
-		} else {
-			r.Prs[peer] = &Progress{}
-		}
+		r.Prs[peer] = &Progress{}
 	}
 	r.RaftLog.pendingSnapshot = m.Snapshot
+	r.sendAppendResponse(m.From, false, None, meta.Index)
 }
 
 // addNode add a new node to raft group

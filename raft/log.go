@@ -73,8 +73,12 @@ func newLog(storage Storage) *RaftLog {
 // grow unlimitedly in memory
 func (l *RaftLog) maybeCompact() {
 	// Your Code Here (2C).
-	if len(l.entries) > 0 && l.FirstIndex > l.entries[0].Index {
-		l.entries = l.entries[l.FirstIndex:]
+	first, _ := l.storage.FirstIndex()
+	if first > l.FirstIndex {
+		if len(l.entries) > 0 {
+			l.entries = l.entries[l.toSliceIndex(first):]
+		}
+		l.FirstIndex = first
 	}
 }
 
