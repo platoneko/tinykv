@@ -116,9 +116,7 @@ func (d *peerMsgHandler) HandleRaftReady() {
 			kvWB.SetMeta(meta.ApplyStateKey(d.regionId), d.peerStorage.applyState)
 			kvWB.WriteToDB(d.peerStorage.Engines.Kv)
 		}
-		d.RaftGroup.Raft.DPrintf("before Advance")
 		d.RaftGroup.Advance(rd)
-		d.RaftGroup.Raft.DPrintf("after Advance")
 	}
 }
 
@@ -203,7 +201,6 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 			kvWB.SetMeta(meta.ApplyStateKey(d.regionId), applySt)
 			kvWB.WriteToDB(d.peerStorage.Engines.Kv)
 			d.ScheduleCompactLog(d.RaftGroup.Raft.RaftLog.FirstIndex, applySt.TruncatedState.Index)
-			d.RaftGroup.Raft.RaftLog.FirstIndex = applySt.TruncatedState.Index + 1
 		}
 		return
 	}

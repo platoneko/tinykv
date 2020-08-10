@@ -370,6 +370,7 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 	ps.applyState.AppliedIndex = max(ps.applyState.AppliedIndex, snapshot.Metadata.Index)
 	ps.applyState.TruncatedState.Index = snapshot.Metadata.Index
 	ps.applyState.TruncatedState.Term = snapshot.Metadata.Term
+	ps.snapState.StateType = snap.SnapState_Applying
 	ps.regionSched <- &runner.RegionTaskApply{
 		RegionId: snapData.Region.GetId(),
 		Notifier: make(chan bool, 1),

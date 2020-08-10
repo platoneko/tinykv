@@ -487,7 +487,6 @@ func (r *Raft) doElection() {
 }
 
 func (r *Raft) bcastHeartbeat() {
-	r.DPrintf("bcastHeartbeat, entry: %d", len(r.RaftLog.entries))
 	for _, peer := range r.peers {
 		if peer == r.id {
 			continue
@@ -652,7 +651,6 @@ func (r *Raft) leaderCommit() {
 
 // handleHeartbeat handle Heartbeat RPC request
 func (r *Raft) handleHeartbeat(m pb.Message) {
-	r.DPrintf("handleHeartbeat, entry: %d", len(r.RaftLog.entries))
 	// Your Code Here (2A).
 	if m.Term < r.Term {
 		r.sendHeartbeatResponse(m.From, true)
@@ -697,7 +695,6 @@ func (r *Raft) handleSnapshot(m pb.Message) {
 	if m.Snapshot.Metadata.Index < r.RaftLog.FirstIndex {
 		return
 	}
-	r.DPrintf("handleSnapshot, entry: %d", len(r.RaftLog.entries))
 	meta := m.Snapshot.Metadata
 	r.Term = max(meta.Term, r.Term)
 	r.RaftLog.FirstIndex = meta.Index + 1
