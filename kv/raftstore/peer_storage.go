@@ -351,17 +351,22 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 	// and send RegionTaskApply task to region worker through ps.regionSched, also remember call ps.clearMeta
 	// and ps.clearExtraData to delete stale data
 	// Your Code Here (2C).
+	if ps.isInitialized() {
+		if err := ps.clearMeta(kvWB, raftWB); err != nil {
+			return nil, err
+		}
+		ps.clearExtraData(snapData.Region)
+	}
+
 	ps.raftState.LastIndex = snapshot.Metadata.Index
 	ps.raftState.LastTerm = snapshot.Metadata.Term
 	ps.applyState.AppliedIndex = snapshot.Metadata.Index
 	ps.applyState.TruncatedState.Index = snapshot.Metadata.Index
 	ps.applyState.TruncatedState.Term = snapshot.Metadata.Term
 	ps.snapState.StateType = snap.SnapState_Applying
-
-	log.Infof("+++++++++++TruncatedState: %+v", *ps.applyState.TruncatedState)
+	kvWB.SetMeta(meta.ApplyStateKey(snapData.Region.GetId()), ps.applyState)
 	
 	ch := make(chan bool, 1)
-	
 	ps.regionSched <- &runner.RegionTaskApply{
 		RegionId: snapData.Region.GetId(),
 		Notifier: ch,
@@ -369,12 +374,11 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 		StartKey: snapData.Region.GetStartKey(),
 		EndKey:   snapData.Region.GetEndKey(),
 	}
+	<-ch
 	
-	ps.clearMeta(kvWB, raftWB)
-	ps.clearExtraData(snapData.Region)
-	kvWB.SetMeta(meta.ApplyStateKey(snapData.Region.GetId()), ps.applyState)
 	result := &ApplySnapResult{PrevRegion: ps.region, Region: snapData.Region}
 	ps.SetRegion(snapData.Region)
+	meta.WriteRegionState(kvWB, ps.region, rspb.PeerState_Normal)
 	return result, nil
 }
 

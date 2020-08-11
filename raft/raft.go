@@ -704,7 +704,6 @@ func (r *Raft) hardState() pb.HardState {
 func (r *Raft) handleSnapshot(m pb.Message) {
 	// Your Code Here (2C).
 	meta := m.Snapshot.Metadata
-	r.DPrintf("snapshot index: %d\n", meta.Index)
 	if meta.Index <= r.RaftLog.committed {
 		r.sendAppendResponse(m.From, false, None, r.RaftLog.committed)
 		return
