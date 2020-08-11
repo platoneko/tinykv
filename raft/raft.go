@@ -219,7 +219,6 @@ func (r *Raft) sendSnapshot(to uint64) {
 func (r *Raft) sendAppend(to uint64) bool {
 	// Your Code Here (2A).
 	prevIndex := r.Prs[to].Next - 1
-	// r.DPrintf("sendAppend prevIndex: %d", prevIndex)
 	prevLogTerm, err := r.RaftLog.Term(prevIndex)
 	if err != nil {
 		if err == ErrCompacted {
@@ -231,7 +230,6 @@ func (r *Raft) sendAppend(to uint64) bool {
 	var entries []*pb.Entry
 	n := len(r.RaftLog.entries)
 	for i := r.RaftLog.toSliceIndex(prevIndex + 1); i < n; i++ {
-		// r.DPrintf("sendAppend i: %d", i)
 		entries = append(entries, &r.RaftLog.entries[i])
 	}
 	msg := pb.Message{
@@ -507,7 +505,6 @@ func (r *Raft) bcastAppend() {
 }
 
 func (r *Raft) handleRequestVote(m pb.Message) {
-	// r.DPrintf("handleRequestVote")
 	if m.Term < r.Term {
 		r.sendRequestVoteResponse(m.From, true)
 		return
@@ -530,7 +527,6 @@ func (r *Raft) handleRequestVote(m pb.Message) {
 }
 
 func (r *Raft) handleRequestVoteResponse(m pb.Message) {
-	// r.DPrintf("handleRequestVoteResponse")
 	if m.Term < r.Term {
 		return
 	}
@@ -562,8 +558,6 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 	r.Lead = m.From
 	l := r.RaftLog
 	lastIndex := l.LastIndex()
-	// r.DPrintf("lastIndex: %d, prevIndex: %d", lastIndex, m.Index)
-	// r.DPrintf("%#v", r.RaftLog.entries)
 	if m.Index > lastIndex {
 		r.sendAppendResponse(m.From, true, None, lastIndex+1)
 		return
@@ -603,7 +597,6 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 			}
 			break
 		}
-		// r.DPrintf("%v", r.RaftLog.entries)
 	}
 	if m.Commit > l.committed {
 		l.committed = min(m.Commit, m.Index+uint64(len(m.Entries)))
@@ -646,7 +639,6 @@ func (r *Raft) leaderCommit() {
 	}
 	sort.Sort(match)
 	n := match[(len(r.peers)-1)/2]
-	// r.DPrintf("match: %v", match)
 
 	if n > r.RaftLog.committed {
 		logTerm, err := r.RaftLog.Term(n)

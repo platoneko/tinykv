@@ -68,7 +68,7 @@ project2ac:
 	$(GOTEST) ./raft -run 2AC
 
 project2b:
-	$(GOTEST) ./kv/test_raftstore -run PersistPartitionUnreliable2B
+	$(GOTEST) ./kv/test_raftstore -run 2B
 
 project2c:
 	$(GOTEST) ./raft ./kv/test_raftstore -run 2C
