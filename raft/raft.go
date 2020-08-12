@@ -212,6 +212,7 @@ func (r *Raft) sendSnapshot(to uint64) {
 		Snapshot: &snapshot,
 	}
 	r.msgs = append(r.msgs, msg)
+	r.Prs[to].Next = snapshot.Metadata.Index + 1
 }
 
 // sendAppend sends an append RPC with new entries (if any) and the

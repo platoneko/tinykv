@@ -101,10 +101,12 @@ func (d *peerMsgHandler) processAdminRequest(req *raft_cmdpb.AdminRequest, wb *e
 	case raft_cmdpb.AdminCmdType_CompactLog:
 		compactLog := req.GetCompactLog()
 		applySt := d.peerStorage.applyState
-		applySt.TruncatedState.Index = compactLog.CompactIndex
-		applySt.TruncatedState.Term = compactLog.CompactTerm
-		wb.SetMeta(meta.ApplyStateKey(d.regionId), applySt)
-		d.ScheduleCompactLog(d.RaftGroup.Raft.RaftLog.FirstIndex, applySt.TruncatedState.Index)
+		if compactLog.CompactIndex >= applySt.TruncatedState.Index {
+			applySt.TruncatedState.Index = compactLog.CompactIndex
+			applySt.TruncatedState.Term = compactLog.CompactTerm
+			wb.SetMeta(meta.ApplyStateKey(d.regionId), applySt)
+			d.ScheduleCompactLog(d.RaftGroup.Raft.RaftLog.FirstIndex, applySt.TruncatedState.Index)
+		}
 	}
 	return wb
 }

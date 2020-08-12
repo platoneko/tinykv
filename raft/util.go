@@ -145,8 +145,9 @@ func (r *Raft) DPrintf(format string, a ...interface{}) (n int, err error) {
 			panic("Unknow state")
 		}
 		msg := fmt.Sprintf(format, a...)
-		log.Printf("Server %d (Term %d, State %s, Lead %d, Applied %d, Commited %d, Entries %d):\n%s",
-			r.id, r.Term, state, r.Lead, r.RaftLog.applied, r.RaftLog.committed, len(r.RaftLog.entries), msg)
+		first , _ := r.RaftLog.storage.FirstIndex()
+		log.Printf("Server %d (Term %d, State %s, Lead %d, Applied %d, Commited %d, First %d, stableFirst %d):\n%s",
+			r.id, r.Term, state, r.Lead, r.RaftLog.applied, r.RaftLog.committed, r.RaftLog.FirstIndex, first, msg)
 	}
 	return
 }
