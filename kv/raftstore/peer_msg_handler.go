@@ -2,7 +2,6 @@ package raftstore
 
 import (
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/Connor1996/badger/y"
@@ -112,6 +111,26 @@ func (d *peerMsgHandler) processAdminRequest(req *raft_cmdpb.AdminRequest, wb *e
 }
 
 func (d *peerMsgHandler) process(entry *eraftpb.Entry, wb *engine_util.WriteBatch) *engine_util.WriteBatch {
+	if entry.EntryType == eraftpb.EntryType_EntryConfChange {
+		cc := &eraftpb.ConfChange{}
+		err := cc.Unmarshal(entry.Data)
+		if err != nil {
+			panic(err)
+		}
+		d.RaftGroup.ApplyConfChange(*cc)
+		if len(d.proposals) > 0 {
+			p := d.proposals[0]
+			if p.index == entry.Index {
+				if p.term != entry.Term {
+					p.cb.Done(ErrRespStaleCommand(entry.Term))
+				} else {
+
+				}
+				d.proposals = d.proposals[1:]
+			}
+		}
+		return wb
+	}
 	req := &raft_cmdpb.Request{}
 	err := req.Unmarshal(entry.Data)
 	if err == nil {
@@ -212,6 +231,43 @@ func (d *peerMsgHandler) preProposeRaftCommand(req *raft_cmdpb.RaftCmdRequest) e
 	return err
 }
 
+func (d *peerMsgHandler) proposeAdminRequest(req *raft_cmdpb.AdminRequest, cb *message.Callback) {
+	switch req.CmdType {
+	case raft_cmdpb.AdminCmdType_ChangePeer:
+		cc := eraftpb.ConfChange{ChangeType: req.ChangePeer.ChangeType, NodeId: req.ChangePeer.Peer.Id}
+		d.RaftGroup.ProposeConfChange(cc)
+		r := d.RaftGroup.Raft
+		p := &proposal{index: r.RaftLog.LastIndex(), term: r.Term, cb: cb}
+		d.proposals = append(d.proposals, p)
+	case raft_cmdpb.AdminCmdType_CompactLog:
+		data, err := req.Marshal()
+		if err != nil {
+			panic(err)
+		}
+		d.RaftGroup.Propose(data)
+	case raft_cmdpb.AdminCmdType_TransferLeader:
+		d.RaftGroup.TransferLeader(req.TransferLeader.Peer.Id)
+		cb.Done(&raft_cmdpb.RaftCmdResponse{
+			AdminResponse: &raft_cmdpb.AdminResponse{
+				CmdType:        raft_cmdpb.AdminCmdType_TransferLeader,
+				TransferLeader: &raft_cmdpb.TransferLeaderResponse{},
+			},
+		})
+	case raft_cmdpb.AdminCmdType_Split:
+	}
+}
+
+func (d *peerMsgHandler) proposeRequest(req *raft_cmdpb.Request, cb *message.Callback) {
+	data, err := req.Marshal()
+	if err != nil {
+		panic(err)
+	}
+	d.RaftGroup.Propose(data)
+	r := d.RaftGroup.Raft
+	p := &proposal{index: r.RaftLog.LastIndex(), term: r.Term, cb: cb}
+	d.proposals = append(d.proposals, p)
+}
+
 func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *message.Callback) {
 	err := d.preProposeRaftCommand(msg)
 	if err != nil {
@@ -220,33 +276,10 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 	}
 	// Your Code Here (2B).
 	if msg.AdminRequest != nil {
-		data, err := msg.AdminRequest.Marshal()
-		if err != nil {
-			panic(err)
-		}
-		d.RaftGroup.Propose(data)
-		return
+		d.proposeAdminRequest(msg.AdminRequest, cb)
+	} else {
+		d.proposeRequest(msg.Requests[0], cb)
 	}
-	data, err := msg.Requests[0].Marshal()
-	if err != nil {
-		panic(err)
-	}
-	d.RaftGroup.Propose(data)
-	r := d.RaftGroup.Raft
-	index := r.RaftLog.LastIndex()
-	p := &proposal{index: index, term: r.Term, cb: cb}
-	if len(d.proposals) > 0 {
-		n := len(d.proposals)
-		idx := sort.Search(n, func(i int) bool { return d.proposals[i].index >= index })
-		if idx < n {
-			for i := idx; i < n; i++ {
-				pi := d.proposals[i]
-				pi.cb.Done(ErrRespStaleCommand(r.Term))
-			}
-			d.proposals = d.proposals[:idx]
-		}
-	}
-	d.proposals = append(d.proposals, p)
 }
 
 func (d *peerMsgHandler) onTick() {
