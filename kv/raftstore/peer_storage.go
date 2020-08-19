@@ -377,8 +377,7 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 	<-ch
 	
 	result := &ApplySnapResult{PrevRegion: ps.region, Region: snapData.Region}
-	ps.SetRegion(snapData.Region)
-	meta.WriteRegionState(kvWB, ps.region, rspb.PeerState_Normal)
+	meta.WriteRegionState(kvWB, snapData.Region, rspb.PeerState_Normal)
 	return result, nil
 }
 
