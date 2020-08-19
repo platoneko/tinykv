@@ -186,7 +186,7 @@ func newRaft(c *Config) *Raft {
 		if peer == r.id {
 			r.Prs[peer] = &Progress{Next: lastIndex + 1, Match: lastIndex}
 		} else {
-			r.Prs[peer] = &Progress{}
+			r.Prs[peer] = &Progress{Next: 1}
 		}
 	}
 	r.becomeFollower(0, None)
@@ -401,7 +401,7 @@ func (r *Raft) becomeLeader() {
 // on `eraftpb.proto` for what msgs should be handled
 func (r *Raft) Step(m pb.Message) error {
 	// Your Code Here (2A).
-	if _, ok := r.Prs[r.id]; !ok {
+	if _, ok := r.Prs[r.id]; !ok && m.MsgType == pb.MessageType_MsgTimeoutNow {
 		return nil
 	}
 	if m.Term > r.Term {
@@ -791,8 +791,9 @@ func (r *Raft) handleTransferLeader(m pb.Message) {
 // addNode add a new node to raft group
 func (r *Raft) addNode(id uint64) {
 	// Your Code Here (3A).
+	r.DPrintf("addNode")
 	if _, ok := r.Prs[id]; !ok {
-		r.Prs[id] = &Progress{Next: r.RaftLog.LastIndex() + 1}
+		r.Prs[id] = &Progress{Next: 1}
 	}
 	r.PendingConfIndex = None
 }
@@ -800,6 +801,7 @@ func (r *Raft) addNode(id uint64) {
 // removeNode remove a node from raft group
 func (r *Raft) removeNode(id uint64) {
 	// Your Code Here (3A).
+	r.DPrintf("removeNode")
 	if _, ok := r.Prs[id]; ok {
 		delete(r.Prs, id)
 		if r.State == StateLeader {
