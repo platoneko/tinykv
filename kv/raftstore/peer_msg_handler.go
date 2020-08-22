@@ -87,9 +87,6 @@ func (d *peerMsgHandler) processRequest(entry *eraftpb.Entry, msg *raft_cmdpb.Ra
 	switch req.CmdType {
 	case raft_cmdpb.CmdType_Get:
 	case raft_cmdpb.CmdType_Put:
-		if d.IsLeader() {
-			d.RaftGroup.Raft.DPrintf("region %d, put %s", d.Region().Id, req.Put.Key)
-		}
 		wb.SetCF(req.Put.Cf, req.Put.Key, req.Put.Value)
 	case raft_cmdpb.CmdType_Delete:
 		wb.DeleteCF(req.Delete.Cf, req.Delete.Key)
@@ -117,7 +114,7 @@ func (d *peerMsgHandler) processRequest(entry *eraftpb.Entry, msg *raft_cmdpb.Ra
 			if msg.Header.RegionEpoch.Version != d.Region().RegionEpoch.Version {
 				p.cb.Done(ErrResp(&util.ErrEpochNotMatch{}))
 				return
-			} 
+			}
 			d.peerStorage.applyState.AppliedIndex = entry.Index
 			wb.SetMeta(meta.ApplyStateKey(d.regionId), d.peerStorage.applyState)
 			wb.WriteToDB(d.peerStorage.Engines.Kv)
@@ -144,7 +141,7 @@ func (d *peerMsgHandler) processAdminRequest(entry *eraftpb.Entry, msg *raft_cmd
 		}
 	case raft_cmdpb.AdminCmdType_Split:
 		region := d.Region()
-		err := util.CheckRegionEpoch(msg, d.Region(), true)
+		err := util.CheckRegionEpoch(msg, region, true)
 		if errEpochNotMatching, ok := err.(*util.ErrEpochNotMatch); ok {
 			d.handleProposal(entry, func(p *proposal) {
 				p.cb.Done(ErrResp(errEpochNotMatching))
@@ -152,15 +149,12 @@ func (d *peerMsgHandler) processAdminRequest(entry *eraftpb.Entry, msg *raft_cmd
 			return
 		}
 		split := req.GetSplit()
-		err = util.CheckKeyInRegion(split.SplitKey, d.Region())
+		err = util.CheckKeyInRegion(split.SplitKey, region)
 		if err != nil {
 			d.handleProposal(entry, func(p *proposal) {
 				p.cb.Done(ErrResp(err))
 			})
 			return
-		}
-		if d.IsLeader() {
-			d.RaftGroup.Raft.DPrintf("region %d, split at %s", d.Region().Id, split.SplitKey)
 		}
 		storeMeta := d.ctx.storeMeta
 		storeMeta.Lock()
@@ -174,7 +168,7 @@ func (d *peerMsgHandler) processAdminRequest(entry *eraftpb.Entry, msg *raft_cmd
 			Id:       split.NewRegionId,
 			StartKey: split.SplitKey,
 			EndKey:   region.EndKey,
-			Peers:    region.Peers,
+			Peers:    peers,
 			RegionEpoch: &metapb.RegionEpoch{
 				ConfVer: 1,
 				Version: 1,
@@ -186,7 +180,9 @@ func (d *peerMsgHandler) processAdminRequest(entry *eraftpb.Entry, msg *raft_cmd
 		storeMeta.regionRanges.ReplaceOrInsert(&regionItem{region: newRegion})
 		storeMeta.Unlock()
 		meta.WriteRegionState(wb, region, rspb.PeerState_Normal)
+		meta.WriteRegionState(wb, newRegion, rspb.PeerState_Normal)
 		d.SizeDiffHint = 0
+		d.ApproximateSize = nil
 		if d.IsLeader() {
 			d.HeartbeatScheduler(d.ctx.schedulerTaskSender)
 		}
@@ -224,7 +220,7 @@ func (d *peerMsgHandler) processConfChange(entry *eraftpb.Entry, cc *eraftpb.Con
 		panic(err)
 	}
 	region := d.Region()
-	err = util.CheckRegionEpoch(msg, d.Region(), true)
+	err = util.CheckRegionEpoch(msg, region, true)
 	if errEpochNotMatching, ok := err.(*util.ErrEpochNotMatch); ok {
 		d.handleProposal(entry, func(p *proposal) {
 			p.cb.Done(ErrResp(errEpochNotMatching))
