@@ -219,9 +219,6 @@ func (r *Raft) sendSnapshot(to uint64) {
 func (r *Raft) sendAppend(to uint64) bool {
 	// Your Code Here (2A).
 	prevIndex := r.Prs[to].Next - 1
-	if int64(prevIndex) < 5 {
-		r.DPrintf("err prevIndex: %d", int64(prevIndex))
-	}
 	prevLogTerm, err := r.RaftLog.Term(prevIndex)
 	if err != nil {
 		if err == ErrCompacted {
