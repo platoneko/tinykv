@@ -27,7 +27,7 @@ import (
 	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 )
 
-const Debug = 1
+const Debug = 0
 
 func min(a, b uint64) uint64 {
 	if a > b {
@@ -133,21 +133,10 @@ func isHardStateEqual(a, b pb.HardState) bool {
 
 func (r *Raft) DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
-		var state string
-		switch r.State {
-		case StateFollower:
-			state = "Follower"
-		case StateCandidate:
-			state = "Candidate"
-		case StateLeader:
-			state = "Leader"
-		default:
-			panic("Unknow state")
-		}
 		msg := fmt.Sprintf(format, a...)
 		first , _ := r.RaftLog.storage.FirstIndex()
-		log.Printf("Server %d (Term %d, State %s, Lead %d, Applied %d, Commited %d, First %d, stableFirst %d):\n%s",
-			r.id, r.Term, state, r.Lead, r.RaftLog.applied, r.RaftLog.committed, r.RaftLog.FirstIndex, first, msg)
+		log.Printf("Server %d (Term %d, %s, Lead %d, Applied %d, Commited %d, First %d, stableFirst %d):\n%s",
+			r.id, r.Term, stmap[r.State], r.Lead, r.RaftLog.applied, r.RaftLog.committed, r.RaftLog.FirstIndex, first, msg)
 	}
 	return
 }
