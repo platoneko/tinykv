@@ -51,13 +51,13 @@ func (server *Server) RawGet(_ context.Context, req *kvrpcpb.RawGetRequest) (*kv
 			Error: err.Error(),
 		}, err
 	}
-	res := &kvrpcpb.RawGetResponse{
+	resp := &kvrpcpb.RawGetResponse{
 		Value: val,
 	}
 	if val == nil {
-		res.NotFound = true
+		resp.NotFound = true
 	}
-	return res, nil
+	return resp, nil
 }
 
 func (server *Server) RawPut(_ context.Context, req *kvrpcpb.RawPutRequest) (*kvrpcpb.RawPutResponse, error) {
@@ -71,12 +71,12 @@ func (server *Server) RawPut(_ context.Context, req *kvrpcpb.RawPutRequest) (*kv
 			},
 		}}
 	err := server.storage.Write(req.Context, batch)
-	res := &kvrpcpb.RawPutResponse{}
+	resp := &kvrpcpb.RawPutResponse{}
 	if err != nil {
-		res.Error = err.Error()
-		return res, err
+		resp.Error = err.Error()
+		return resp, err
 	}
-	return res, nil
+	return resp, nil
 }
 
 func (server *Server) RawDelete(_ context.Context, req *kvrpcpb.RawDeleteRequest) (*kvrpcpb.RawDeleteResponse, error) {
@@ -89,24 +89,24 @@ func (server *Server) RawDelete(_ context.Context, req *kvrpcpb.RawDeleteRequest
 			},
 		}}
 	err := server.storage.Write(req.Context, batch)
-	res := &kvrpcpb.RawDeleteResponse{}
+	resp := &kvrpcpb.RawDeleteResponse{}
 	if err != nil {
-		res.Error = err.Error()
-		return res, err
+		resp.Error = err.Error()
+		return resp, err
 	}
-	return res, nil
+	return resp, nil
 }
 
 func (server *Server) RawScan(_ context.Context, req *kvrpcpb.RawScanRequest) (*kvrpcpb.RawScanResponse, error) {
 	// Your Code Here (1).
-	res := &kvrpcpb.RawScanResponse{}
+	resp := &kvrpcpb.RawScanResponse{}
 	if req.Limit == 0 {
-		return res, nil
+		return resp, nil
 	}
 	reader, err := server.storage.Reader(req.Context)
 	if err != nil {
-		res.Error = err.Error()
-		return res, err
+		resp.Error = err.Error()
+		return resp, err
 	}
 	defer reader.Close()
 	iter := reader.IterCF(req.Cf)
@@ -117,8 +117,8 @@ func (server *Server) RawScan(_ context.Context, req *kvrpcpb.RawScanRequest) (*
 		item := iter.Item()
 		val, err := item.ValueCopy(nil)
 		if err != nil {
-			res.Error = err.Error()
-			return res, err
+			resp.Error = err.Error()
+			return resp, err
 		}
 		pairs = append(pairs, &kvrpcpb.KvPair{
 			Key:   item.KeyCopy(nil),
@@ -129,8 +129,8 @@ func (server *Server) RawScan(_ context.Context, req *kvrpcpb.RawScanRequest) (*
 			break
 		}
 	}
-	res.Kvs = pairs
-	return res, nil
+	resp.Kvs = pairs
+	return resp, nil
 }
 
 // Raft commands (tinykv <-> tinykv)
