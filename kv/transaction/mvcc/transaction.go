@@ -120,9 +120,6 @@ func (txn *MvccTxn) GetValue(key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if write == nil {
-		return nil, nil
-	}
 	if write.Kind == WriteKindDelete {
 		return nil, nil
 	}
