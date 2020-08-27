@@ -652,6 +652,9 @@ func (r *Raft) handleAppendEntriesResponse(m pb.Message) {
 	}
 	if m.Reject {
 		index := m.Index
+		if index == None {
+			return
+		}
 		if m.LogTerm != None {
 			logTerm := m.LogTerm
 			l := r.RaftLog

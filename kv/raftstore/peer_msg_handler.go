@@ -182,10 +182,7 @@ func (d *peerMsgHandler) processAdminRequest(entry *eraftpb.Entry, msg *raft_cmd
 		meta.WriteRegionState(wb, region, rspb.PeerState_Normal)
 		meta.WriteRegionState(wb, newRegion, rspb.PeerState_Normal)
 		d.SizeDiffHint = 0
-		d.ApproximateSize = nil
-		if d.IsLeader() {
-			d.HeartbeatScheduler(d.ctx.schedulerTaskSender)
-		}
+		d.ApproximateSize = new(uint64)
 		peer, err := createPeer(d.ctx.store.Id, d.ctx.cfg, d.ctx.regionTaskSender, d.ctx.engine, newRegion)
 		if err != nil {
 			panic(err)
@@ -201,6 +198,9 @@ func (d *peerMsgHandler) processAdminRequest(entry *eraftpb.Entry, msg *raft_cmd
 				},
 			})
 		})
+		if d.IsLeader() {
+			d.HeartbeatScheduler(d.ctx.schedulerTaskSender)
+		}
 	}
 }
 
@@ -240,9 +240,6 @@ func (d *peerMsgHandler) processConfChange(entry *eraftpb.Entry, cc *eraftpb.Con
 			storeMeta.regions[region.Id] = region
 			storeMeta.Unlock()
 			d.insertPeerCache(peer)
-			if d.IsLeader() {
-				d.PeersStartPendingTime[cc.NodeId] = time.Now()
-			}
 		}
 	case eraftpb.ConfChangeType_RemoveNode:
 		if cc.NodeId == d.Meta.Id {
@@ -259,9 +256,6 @@ func (d *peerMsgHandler) processConfChange(entry *eraftpb.Entry, cc *eraftpb.Con
 			storeMeta.regions[region.Id] = region
 			storeMeta.Unlock()
 			d.removePeerCache(cc.NodeId)
-			if _, ok := d.PeersStartPendingTime[cc.NodeId]; ok {
-				delete(d.PeersStartPendingTime, cc.NodeId)
-			}
 		}
 	}
 	d.RaftGroup.ApplyConfChange(*cc)
@@ -274,6 +268,9 @@ func (d *peerMsgHandler) processConfChange(entry *eraftpb.Entry, cc *eraftpb.Con
 			},
 		})
 	})
+	if d.IsLeader() {
+		d.HeartbeatScheduler(d.ctx.schedulerTaskSender)
+	}
 }
 
 func (d *peerMsgHandler) process(entry *eraftpb.Entry, wb *engine_util.WriteBatch) *engine_util.WriteBatch {
