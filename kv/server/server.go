@@ -265,6 +265,7 @@ func (server *Server) KvPrewrite(_ context.Context, req *kvrpcpb.PrewriteRequest
 					Key:         m.Key,
 					LockTtl:     lock.Ttl,
 				}})
+			continue
 		}
 		var kind mvcc.WriteKind
 		switch m.Op {
